@@ -3,6 +3,7 @@ package com.devjubis.tickets.ticketing.infrastructure.persistence;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Component;
 
 import com.devjubis.tickets.ticketing.domain.model.Ticket;
@@ -20,10 +21,17 @@ class TicketRepositoryAdapter implements TicketRepository {
     @Override
     public Ticket save(Ticket ticket) {
         TicketJpaEntity entityToPersist = ticketSpringRepository.findById(ticket.getId())
-                .map(existingEntity -> ticketPersistenceMapper.applyChanges(ticket, existingEntity))
+                .map(existingEntity -> applyChangesRejectingStaleVersion(ticket, existingEntity))
                 .orElseGet(() -> ticketPersistenceMapper.toJpaEntity(ticket));
 
         return ticketPersistenceMapper.toDomain(ticketSpringRepository.saveAndFlush(entityToPersist));
+    }
+
+    private TicketJpaEntity applyChangesRejectingStaleVersion(Ticket ticket, TicketJpaEntity existingEntity) {
+        if (ticket.getVersion() != existingEntity.getVersion()) {
+            throw new ObjectOptimisticLockingFailureException(TicketJpaEntity.class, ticket.getId());
+        }
+        return ticketPersistenceMapper.applyChanges(ticket, existingEntity);
     }
 
     @Override
